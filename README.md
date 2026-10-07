@@ -2,6 +2,14 @@
 
 A free Chrome extension to preview any website in realistic phone, tablet and desktop frames: test responsive layouts, take beautiful screenshots and record videos. No account, no tracking, nothing locked behind a paywall.
 
+![Mobile Simulator: a website previewed in an iPhone frame](docs/screenshots/simulator.jpg)
+
+| Compare devices | Phone keyboard |
+|---|---|
+| ![Phone, Android, iPad and MacBook side by side](docs/screenshots/compare.jpg) | ![The iOS keyboard open on a sign-up field](docs/screenshots/keyboard.jpg) |
+
+<sub>Screenshots use a demo website.</sub>
+
 ## Features
 
 - **Side panel**: the website stays in your tab, the phone preview sits next to it and follows the tab you're on.
