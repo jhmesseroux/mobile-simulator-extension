@@ -1,0 +1,83 @@
+/* Device picker (search, tabs, cards), shared by the simulator page and page mode.
+   Light-theme rules use :is() so they apply on the page (:root) and in page mode's shadow root (:host). */
+.dev-head { display: flex; align-items: center; justify-content: space-between; }
+.dev-head b { font-size: 17px; font-weight: 600; }
+.dev-compare { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: 13px; color: var(--soft); cursor: pointer; }
+.dev-compare input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.dev-compare i { position: relative; width: 36px; height: 22px; border-radius: 11px; background: var(--border); transition: background .2s; }
+.dev-compare i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: translate .25s var(--spring); }
+.dev-compare input:checked + i { background: var(--gradient); }
+.dev-compare input:checked + i::after { translate: 14px 0; }
+.dev-compare input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dev-search {
+  display: flex; align-items: center; gap: 10px;
+  height: 40px; padding: 0 14px;
+  border-radius: 12px;
+  background: var(--inset);
+  box-shadow: inset 0 0 0 1px var(--inset-line);
+  color: var(--muted);
+}
+.dev-search:focus-within { box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px var(--accent-soft); }
+.dev-search svg { width: 16px; height: 16px; stroke-width: 2; }
+.dev-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font-size: 14px; }
+.dev-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 13px; background: var(--inset); }
+.dev-tab { flex: 1; height: 32px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--muted); font-size: 13px; font-weight: 500; }
+.dev-tab:hover { color: var(--text); }
+.dev-tab.on { background: rgba(255, 255, 255, .1); color: var(--text); }
+:is(:root[data-theme="light"], :host([data-theme="light"])) .dev-tab.on { background: #fff; box-shadow: 0 1px 2px rgba(40, 20, 80, .15); }
+.dev-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.dev-empty { grid-column: 1 / -1; padding: 22px 0; text-align: center; color: var(--muted); font-size: 13px; }
+.dev-card {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 9px;
+  min-height: 140px;
+  padding: 16px 8px 12px;
+  border: 1px solid var(--inset-line);
+  border-radius: 16px;
+  background: var(--inset);
+  color: var(--text);
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.dev-card:hover { background: var(--hover); transform: translateY(-1px); }
+.dev-card b { font-size: 13px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-card > span:not(.del) { font: 500 11px var(--mono); color: var(--muted); }
+.dev-card.on { background: linear-gradient(160deg, rgba(124, 58, 237, .28), rgba(236, 72, 153, .16)); border-color: rgba(196, 181, 253, .5); }
+.dev-card.on > span:not(.del) { color: #d8ccf3; }
+:is(:root[data-theme="light"], :host([data-theme="light"])) .dev-card.on > span:not(.del) { color: var(--accent-strong); }
+.sil { position: relative; display: block; border: 2px solid var(--muted); border-radius: 9px; flex: none; }
+.sil::after { content: ""; position: absolute; top: 4px; left: 50%; width: 12px; height: 4px; margin-left: -6px; border-radius: 2px; background: var(--muted); }
+.sil.home { border-radius: 6px; }
+.sil.home::after { display: none; }
+.dev-card.on .sil { border-color: #e9d5ff; }
+.dev-card.on .sil::after { background: #e9d5ff; }
+.dev-card .del {
+  position: absolute; top: 6px; right: 6px;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: 7px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity .15s, background .15s;
+}
+.dev-card:hover .del { opacity: 1; }
+.dev-card .del:hover { background: var(--danger); color: #fff; }
+.dev-card .del svg { width: 12px; height: 12px; stroke-width: 2.2; }
+.dev-add {
+  height: 40px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: none;
+  color: var(--soft);
+  font-size: 13px; font-weight: 500;
+}
+.dev-add:hover { border-color: var(--accent); color: var(--text); }
+.custom-form { display: grid; grid-template-columns: 1fr 72px 72px; gap: 8px; padding: 14px; border-radius: 16px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--inset-line); }
+.custom-form .full { grid-column: 1 / -1; }
+.custom-form input, .custom-form select, .text-input {
+  height: 36px; min-width: 0; padding: 0 10px;
+  background: var(--inset); border: 1px solid var(--inset-line); border-radius: 10px; outline: 0;
+  color: var(--text);
+}
+.custom-form select option { color: #111; }
+.custom-form input:focus, .custom-form select:focus, .text-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.custom-form button { height: 36px; border: 0; border-radius: 10px; background: var(--gradient); color: #fff; font-weight: 600; }

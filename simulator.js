@@ -1,10 +1,16 @@
 import {
   DEVICES, FRAMES, GROUPS, CUSTOM_TYPES, FINISHES, DEFAULT_DEVICE, DEFAULT_COMPARE, DEFAULT_FINISH, geometry, finishColors,
 } from './lib/devices.js';
+import { dragPill } from './lib/drag-pill.js';
 import { BACKGROUNDS, RATIOS, DEFAULT_EXPORT, computeLayout, paint, supportedFormats, encode, extensionOf, isDarkColor } from './lib/export.js';
 import { applyRules, clearRules } from './lib/rules.js';
 import { createRecorder } from './lib/recorder.js';
 import { keyboardOs, keyboardHeight, renderKeyboard } from './lib/keyboard.js';
+import { SB_ICONS, applyGeometry } from './lib/device-view.js';
+import { shotScene } from './lib/shot-scene.js';
+import { esc, deviceCard, TAB_LABELS } from './lib/device-picker.js';
+import { CAPTION_STYLES, captionStyle, captionFont, loadCaptionFonts } from './lib/caption-styles.js';
+import { loadPageMode, normalize as normalizePageMode } from './lib/page-mode-settings.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const stage = $('#stage');
@@ -70,7 +76,6 @@ const SAVE_DELAY_MS = 300;
 const MAX_RECENT = 5;
 const MENU_MAX_H = 640;
 const ZOOM_CTL_BOTTOM = 60; // clear of the 48px bottom edge blur
-const TAB_LABELS = { iphone: 'iPhone', android: 'Android', tablet: 'Tablets', desktop: 'Desktop', custom: 'Custom' };
 const VIDEO_MAX_SIDE = 4096;
 const VIDEO_MAX_PIXELS = 8_000_000;
 
@@ -91,11 +96,6 @@ let mode = 'tab';
 let windowId = null;
 let overlayAction = '';
 let activeTabId = null; // side panel: the tab the phone follows
-
-const SB_ICONS = `
-  <svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
-  <svg class="wifi" viewBox="0 0 16 12"><path d="M1.5 4.6a9.2 9.2 0 0 1 13 0"/><path d="M4.1 7.3a5.5 5.5 0 0 1 7.8 0"/><circle cx="8" cy="10.2" r="1.5"/></svg>
-  <svg viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="18" height="9" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4Z" opacity=".45"/></svg>`;
 
 const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-pointer-lock allow-presentation';
 const IFRAME_ALLOW = 'clipboard-read; clipboard-write; fullscreen; geolocation; camera; microphone; autoplay; encrypted-media; picture-in-picture; web-share';
@@ -150,12 +150,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
 let toastTimer = 0;
-function toast(msg) {
+// action: { label, run } adds a button (e.g. "Show in folder"); the toast then stays longer.
+function toast(msg, action = null) {
   const el = $('#toast');
   el.textContent = msg;
+  if (action) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-act';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      action.run();
+      el.classList.remove('show');
+    });
+    el.append(btn);
+  }
+  el.classList.toggle('has-action', !!action);
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  toastTimer = setTimeout(() => el.classList.remove('show'), action ? 5000 : 2600);
 }
 
 function normalizeUrl(raw) {
@@ -191,13 +203,28 @@ function fileName(kind, ext) {
   return `${kind}-${slug(hostOf(views[0].url) || 'page')}-${slug(device)}-${stamp}.${ext}`;
 }
 
-function download(blob, name) {
+// Saved quietly (no Chrome download bubble) with a toast offering "Show in folder";
+// a plain download when the downloads API is unavailable.
+async function download(blob, name, message) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+  const reply = await chrome.runtime.sendMessage({ type: 'quiet-download', dataUrl, filename: name }).catch((err) => ({ ok: false, error: err.message }));
+  if (reply?.ok) {
+    toast(message, { label: 'Show in folder', run: () => chrome.downloads.show(reply.id) });
+    return;
+  }
+  console.warn('[mobile-sim] quiet download', reply?.error);
   const href = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = href;
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(href), 10_000);
+  toast(message);
 }
 
 // ---------- header rules ----------
@@ -294,39 +321,11 @@ function updateView(v, d, showFrame = state.showFrame) {
   v.d = d;
   const g = geometry(d, state.orientation, showFrame);
   v.g = g;
-  const [, r, , l] = g.inset;
-  // Status bar switched off: the page starts at the top of the screen.
-  const t = state.statusBar ? g.inset[0] : 0;
-  v.top = t;
-  v.left = l;
+  applyGeometry(v, d, g, { showFrame, statusBar: state.statusBar });
   const desktop = FRAMES[d.frame].os === 'desktop';
   v.slot.classList.toggle('desktop', desktop);
-
-  v.device.className = `device frame-${d.frame} ${g.land ? 'land' : 'port'}${showFrame ? '' : ' frameless'}`;
-  v.base.className = `base${g.base ? ` base-${g.base} frame-${d.frame}` : ''}`;
-  Object.assign(v.base.style, { width: `${g.outerW}px`, height: `${g.baseH}px` });
-  Object.assign(v.device.style, {
-    width: `${g.outerW}px`,
-    height: `${g.outerH}px`,
-    padding: g.bezel.map((n) => `${n}px`).join(' '),
-    borderRadius: `${g.radius}px`,
-  });
-  v.device.style.setProperty('--rim', `${g.rim}px`);
-  v.device.style.setProperty('--radius', `${g.radius}px`);
-  // clip-path, not just overflow + border-radius: Chrome can let a scrolling iframe
-  // escape a rounded overflow clip.
-  Object.assign(v.screen.style, {
-    width: `${g.w}px`,
-    height: `${g.h}px`,
-    borderRadius: `${g.screenRadius}px`,
-    clipPath: `inset(0 round ${g.screenRadius}px)`,
-  });
-  v.statusbar.style.height = `${t}px`;
-  v.statusbar.style.display = t ? '' : 'none';
-  Object.assign(v.iframe.style, { top: `${t}px`, left: `${l}px`, width: `${g.w - l - r}px` });
   sizeIframe(v);
   if (v.kbOpen) renderKb(v);
-  v.progress.style.top = `${t}px`;
   v.screen.classList.toggle('has-url', !!state.url);
 
   $('.label b', v.slot).textContent = d.name;
@@ -674,7 +673,7 @@ function onFrameMessage(e) {
         // Full screen comes back on this page if the website is refreshed.
         if (mode === 'overlay') chrome.runtime.sendMessage({ type: 'overlay-nav', tabId, url: data.url }).catch(() => {});
         if (document.activeElement !== urlInput) urlInput.value = data.url;
-        document.title = `${data.title || hostOf(data.url)} · Mobile Simulator`;
+        document.title = `${data.title || hostOf(data.url)} · jhm-web-responsive`;
       }
       break;
     }
@@ -855,99 +854,13 @@ async function captureDevice(v) {
   }
 }
 
-// The device body for exports: metal rim in the current finish, highlight, black glass.
-function drawFrame(ctx, box, g, unit) {
-  const { a, b, angle } = finishColors(state.finish);
-  const rim = g.rim * unit;
-  const radius = g.radius * unit;
-  const rad = (angle * Math.PI) / 180;
-  const dx = Math.sin(rad);
-  const dy = -Math.cos(rad);
-  const half = (Math.abs(box.w * dx) + Math.abs(box.h * dy)) / 2;
-  const cx = box.x + box.w / 2;
-  const cy = box.y + box.h / 2;
-  const along = () => ctx.createLinearGradient(cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half);
-  const shape = (inset, r) => {
-    ctx.beginPath();
-    ctx.roundRect(box.x + inset, box.y + inset, box.w - inset * 2, box.h - inset * 2, Math.max(0, r));
-  };
 
-  const metal = along();
-  metal.addColorStop(0, a);
-  metal.addColorStop(1, b);
-  ctx.fillStyle = metal;
-  shape(0, radius);
-  ctx.fill();
-  const shine = along();
-  shine.addColorStop(0, 'rgba(255,255,255,.4)');
-  shine.addColorStop(0.22, 'rgba(255,255,255,0)');
-  shine.addColorStop(0.78, 'rgba(255,255,255,0)');
-  shine.addColorStop(1, 'rgba(255,255,255,.2)');
-  ctx.fillStyle = shine;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,.33)';
-  ctx.lineWidth = 0.75 * unit;
-  shape(0.375 * unit, radius - 0.375 * unit);
-  ctx.stroke();
-  ctx.fillStyle = '#000';
-  shape(rim, radius - rim);
-  ctx.fill();
-}
 
-// Laptop deck or monitor stand under a desktop's screen, in the frame's finish.
-function drawBase(ctx, box, g, unit) {
-  const { a, b } = finishColors(state.finish);
-  const metal = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
-  metal.addColorStop(0, a);
-  metal.addColorStop(1, b);
-  ctx.fillStyle = metal;
-  ctx.beginPath();
-  if (g.base === 'laptop') {
-    // Deck as wide as the lid, with a notch to open it.
-    ctx.roundRect(box.x, box.y, box.w, box.h, [0, 0, box.h * 0.6, box.h * 0.6]);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,.25)';
-    ctx.beginPath();
-    ctx.roundRect(box.x + box.w * 0.42, box.y, box.w * 0.16, box.h * 0.32, [0, 0, 6 * unit, 6 * unit]);
-    ctx.fill();
-  } else {
-    // Neck, then the foot.
-    const neckW = box.w * 0.14;
-    ctx.rect(box.x + (box.w - neckW) / 2, box.y, neckW, box.h * 0.82);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(box.x + box.w * 0.3, box.y + box.h * 0.82, box.w * 0.4, box.h * 0.18, 8 * unit);
-    ctx.fill();
-  }
-}
-
-// Layout items + draw callback for screenshots, from the captured screens.
-function shotScene(opts) {
-  const items = shot.captures.map(({ g }) =>
-    opts.frame ? { w: g.outerW, h: g.outerH + g.baseH, radius: g.base ? 0 : g.radius } : { w: g.w, h: g.h, radius: g.screenRadius },
-  );
-  const draw = (ctx, box, i) => {
-    const { canvas, g } = shot.captures[i];
-    const unit = box.w / items[i].w;
-    let screen = box;
-    if (opts.frame) {
-      drawFrame(ctx, { x: box.x, y: box.y, w: box.w, h: g.outerH * unit }, g, unit);
-      if (g.base) drawBase(ctx, { x: box.x, y: box.y + g.outerH * unit, w: box.w, h: g.baseH * unit }, g, unit);
-      screen = { x: box.x + g.bezel[3] * unit, y: box.y + g.bezel[0] * unit, w: g.w * unit, h: g.h * unit };
-    }
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(screen.x, screen.y, screen.w, screen.h, g.screenRadius * unit);
-    ctx.clip();
-    ctx.drawImage(canvas, screen.x, screen.y, screen.w, screen.h);
-    ctx.restore();
-  };
-  return { items, draw };
-}
 
 // ---------- screenshot dialog ----------
 
 async function openShotDialog() {
+  loadCaptionFonts().then(() => shot && (renderCaptionStyles(state.exportOpts), renderPreview()));
   if (!state.url) return toast('Open a website first');
   if (rec) return toast('Stop recording first');
   if (shot) return;
@@ -1005,7 +918,7 @@ function closeShotDialog() {
 function renderPreview() {
   if (!shot?.captures.length) return;
   const opts = state.exportOpts;
-  const { items, draw } = shotScene(opts);
+  const { items, draw } = shotScene(shot.captures, opts, state.finish);
   const full = computeLayout(opts, items, shot.res);
   $('#shotDims').textContent = `${full.W} × ${full.H} px · ${opts.format.toUpperCase()}`;
 
@@ -1023,7 +936,7 @@ function renderPreview() {
 
 function renderFullShot() {
   const opts = state.exportOpts;
-  const { items, draw } = shotScene(opts);
+  const { items, draw } = shotScene(shot.captures, opts, state.finish);
   const layoutFull = computeLayout(opts, items, shot.res);
   const canvas = document.createElement('canvas');
   canvas.width = layoutFull.W;
@@ -1038,9 +951,8 @@ async function saveShot() {
   try {
     const format = state.exportOpts.format;
     const blob = await encode(renderFullShot(), format);
-    download(blob, fileName('screenshot', extensionOf(format)));
+    await download(blob, fileName('screenshot', extensionOf(format)), 'Screenshot saved');
     closeShotDialog();
-    toast('Screenshot saved');
   } catch (err) {
     toast(`Could not save: ${err.message}`);
   } finally {
@@ -1108,6 +1020,23 @@ function renderShotControls() {
   $('#captionOpt').checked = o.caption;
   if (document.activeElement !== $('#captionText')) $('#captionText').value = o.captionText;
   $('#captionText').disabled = !o.caption;
+  $('#captionOpacity').value = o.captionOpacity;
+  $('#captionOpacityVal').textContent = `${o.captionOpacity}%`;
+  $('#captionIcon').checked = o.captionIcon;
+  for (const el of ['.cap-opacity', '.cap-icon']) $(el).classList.toggle('off', !o.caption);
+  renderCaptionStyles(o);
+}
+
+// Each style previewed in its own font with the caption's text.
+function renderCaptionStyles(o) {
+  const box = $('#captionStyles');
+  const sample = (o.captionText || 'JHM').trim().slice(0, 14) || 'JHM';
+  const selected = captionStyle(o.captionStyle).id;
+  box.setAttribute('aria-disabled', String(!o.caption));
+  box.innerHTML = CAPTION_STYLES.map((s) => `
+    <button class="cap-style${selected === s.id ? ' on' : ''}" role="radio" aria-checked="${selected === s.id}" data-style="${s.id}">
+      <b style="font: ${esc(captionFont(s, 20))}">${esc(sample)}</b><small>${esc(s.label)}</small>
+    </button>`).join('');
 }
 
 function bindShotDialog() {
@@ -1127,12 +1056,21 @@ function bindShotDialog() {
   live($('#bgSolidColor'), () => ({ solid: $('#bgSolidColor').value }));
   live($('#shadowRange'), () => ({ shadowStrength: Number($('#shadowRange').value) }));
   live($('#captionText'), () => ({ captionText: $('#captionText').value }));
+  live($('#captionOpacity'), () => {
+    $('#captionOpacityVal').textContent = `${$('#captionOpacity').value}%`;
+    return { captionOpacity: Number($('#captionOpacity').value) };
+  });
+  $('#captionIcon').addEventListener('change', (e) => setExport({ captionIcon: e.target.checked }));
   $('#padRange').addEventListener('input', (e) => {
     $('#padVal').textContent = `${e.target.value}px`;
     setExport({ padding: Number(e.target.value) }, { controls: false });
   });
   $('#shadowOpt').addEventListener('change', (e) => setExport({ shadow: e.target.checked }));
   $('#captionOpt').addEventListener('change', (e) => setExport({ caption: e.target.checked }));
+  $('#captionStyles').addEventListener('click', (e) => {
+    const style = e.target.closest('[data-style]')?.dataset.style;
+    if (style) loadCaptionFonts([style]).then(() => setExport({ captionStyle: style }));
+  });
 
   $('#shotCancel').addEventListener('click', closeShotDialog);
   $('#shotSave').addEventListener('click', saveShot);
@@ -1260,6 +1198,7 @@ function recordLook() {
 }
 
 async function beginRecording(preset) {
+  await loadCaptionFonts([captionStyle(state.exportOpts.captionStyle).id]);
   let capture;
   try {
     capture = await openCaptureStream(preset.fps);
@@ -1499,6 +1438,19 @@ function bindPanel() {
   });
 }
 
+// Side panel / full screen → page mode on the same tab, with the same device and orientation.
+async function toPageMode() {
+  if (rec || countdown) return toast('Stop recording first');
+  const target = mode === 'panel' ? activeTabId : tabId;
+  if (target == null) return toast('Open a website first');
+  const reply = await chrome.runtime
+    .sendMessage({ type: 'sim-to-page-mode', tabId: target, deviceId: views[0]?.d?.id, orientation: state.orientation })
+    .catch((err) => ({ ok: false, error: err.message }));
+  if (!reply?.ok) return toast(reply?.error || 'Could not open the inline phone on this page');
+  if (mode === 'overlay') closeOverlay();
+  else window.close();
+}
+
 // Full screen → side panel: open the panel (needs this click), then leave full screen.
 async function overlayToPanel() {
   if (rec || countdown) return toast('Stop recording first');
@@ -1581,8 +1533,7 @@ function bindReview() {
   });
 
   $('#rvSave').addEventListener('click', () => {
-    download(review.blob, review.name);
-    toast('Video saved');
+    download(review.blob, review.name, 'Video saved').catch((err) => toast(`Could not save: ${err.message}`));
     closeReview();
   });
   $('#rvAgain').addEventListener('click', () => {
@@ -1627,6 +1578,7 @@ function bindRecordPanel() {
   });
   $('#recStart').addEventListener('click', startRecording);
   $('#recStop').addEventListener('click', finishRecording);
+  dragPill($('#recPill'));
 }
 
 // ---------- toolbar & panels ----------
@@ -1716,17 +1668,6 @@ function bindZoomMenu() {
   });
 }
 
-const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
-function deviceCard(d, selected) {
-  const k = Math.min(80 / Math.max(1000, d.h), 96 / d.w);
-  return `
-    <button class="dev-card${selected ? ' on' : ''}" data-id="${d.id}">
-      <i class="sil${d.frame === 'home' ? ' home' : ''}" style="width:${Math.round(d.w * k)}px;height:${Math.round(d.h * k)}px"></i>
-      <b>${esc(d.name)}</b><span>${d.w} × ${d.h}</span>
-      ${d.group === 'custom' ? `<span class="del" data-del="${d.id}" title="Delete" aria-label="Delete ${esc(d.name)}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></span>` : ''}
-    </button>`;
-}
 
 function currentTab() {
   if (devTab) return devTab;
@@ -1959,6 +1900,58 @@ function onKeydown(e) {
   }
 }
 
+// Page mode settings live in their own storage key (read by the background and frame.js).
+async function bindPageMode() {
+  const { iconOpens = 'page' } = await chrome.storage.local.get('iconOpens');
+  const seg = $('#iconOpensSeg');
+  const showIcon = (value) => seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === value));
+  showIcon(iconOpens);
+  seg.addEventListener('click', (e) => {
+    const value = e.target.closest('button')?.dataset.v;
+    if (!value) return;
+    showIcon(value);
+    chrome.storage.local.set({ iconOpens: value }).catch((err) => console.error('[mobile-sim] icon opens', err));
+  });
+  // Allowed sites: glass tags (× removes) and a field with + to add.
+  const toggle = $('#optPageMode');
+  const tags = $('#pageHosts');
+  const input = $('#optPageHosts');
+  let settings = await loadPageMode();
+  toggle.checked = settings.enabled;
+  const store = () => {
+    settings = normalizePageMode(settings);
+    chrome.storage.local.set({ pageMode: settings }).catch((err) => console.error('[mobile-sim] page mode', err));
+    tags.closest('.row').classList.toggle('off', !settings.enabled);
+  };
+  const render = () => {
+    tags.innerHTML = settings.hosts
+      .map((h) => `<span class="host-tag glass" role="listitem">${esc(h)}<button class="pop-close" data-host="${esc(h)}" aria-label="Remove ${esc(h)}" title="Remove"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></span>`)
+      .join('');
+  };
+  tags.addEventListener('click', (e) => {
+    const host = e.target.closest('[data-host]')?.dataset.host;
+    if (!host) return;
+    settings.hosts = settings.hosts.filter((h) => h !== host);
+    store();
+    render();
+  });
+  $('#pageHostAdd').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const added = normalizePageMode({ hosts: input.value.split(/[\s,]+/) }).hosts;
+    if (!added.length) return toast('Enter a host, e.g. jhme.dev or *.example.test');
+    settings.hosts = [...settings.hosts, ...added];
+    input.value = '';
+    store();
+    render();
+  });
+  toggle.addEventListener('change', () => {
+    settings.enabled = toggle.checked;
+    store();
+  });
+  render();
+  tags.closest('.row').classList.toggle('off', !settings.enabled);
+}
+
 function bindUi() {
   $('#urlForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1997,6 +1990,7 @@ function bindUi() {
   $('#closeBtn').addEventListener('click', closeOverlay);
   $('#cornerClose').addEventListener('click', closeOverlay);
   $('#panelBtn').addEventListener('click', overlayToPanel);
+  $('#pageModeBtn').addEventListener('click', toPageMode);
   $('#record').addEventListener('click', toggleRecording);
   stage.addEventListener('click', (e) => {
     const url = e.target.closest('.sugg')?.dataset.url;
@@ -2068,6 +2062,7 @@ function bindUi() {
     });
   }
 
+  bindPageMode();
   bindShotDialog();
   bindKeyboard();
   POPOVERS.forEach((p) => p.addEventListener('scroll', () => updateMoreBelow(p), { passive: true }));
@@ -2147,9 +2142,17 @@ async function init() {
   setInterval(updateClock, 15_000);
   await syncViews();
   if (mode === 'panel') await followActiveTab();
-  if (mode === 'overlay' && tabId == null) toast('Open full screen from the Mobile Simulator icon');
+  if (mode === 'overlay' && tabId == null) toast('Open full screen from the jhm-web-responsive icon');
   else if (mode === 'overlay' && !overlayAction) toast('Full screen · press Esc or × (top right) to return to the page');
   if (!state.url && mode !== 'panel') urlInput.focus();
+  // Opened from page mode's gear or the icon menu: straight to the Page mode settings.
+  if (params.get('settings') === 'page-mode') {
+    togglePopover(settingsPanel, $('#settingsBtn'));
+    requestAnimationFrame(() => {
+      $('#pageModeSettings').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      $('#optPageHosts').focus({ preventScroll: true });
+    });
+  }
 }
 
 init().catch((err) => {

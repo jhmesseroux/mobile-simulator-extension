@@ -2,11 +2,13 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <title>Mobile Simulator</title>
+  <title>jhm-web-responsive</title>
   <link rel="icon" href="icons/icon32.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="lib/device-frame.css">
+  <link rel="stylesheet" href="lib/device-picker.css">
   <link rel="stylesheet" href="simulator.css">
 </head>
 <body>
@@ -18,8 +20,8 @@
   <div class="pblur bottom" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
   <header class="topbar glass">
-    <span class="brand" title="Mobile Simulator">
-      <svg viewBox="0 0 14 18"><rect x="1" y="1" width="12" height="16" rx="3"/></svg>
+    <span class="brand" title="jhm-web-responsive">
+      <svg viewBox="18 20 91 88"><path d="M65 44 H33 a9 9 0 0 0 -9 9 V80 a9 9 0 0 0 9 9 H65"/><path d="M24 53 H65"/><rect x="65" y="25" width="38" height="78" rx="10"/></svg>
     </span>
     <button id="back" class="icon-btn" aria-label="Back" title="Back">
       <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
@@ -75,6 +77,9 @@
     </button>
     <button id="panelBtn" class="icon-btn" data-tip="Side panel" aria-label="Back to the side panel">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M14 4v16"/><path d="M17 9h1M17 12h1"/></svg>
+    </button>
+    <button id="pageModeBtn" class="icon-btn" data-tip="Inline phone" aria-label="Open the inline phone: the phone inside the page">
+      <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2.5"/><rect x="13.5" y="7" width="5" height="10" rx="1.2"/></svg>
     </button>
     <button id="fullBtn" class="icon-btn" data-tip="Full screen" aria-label="Open full screen">
       <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
@@ -223,6 +228,22 @@
       <span>Home indicator<small>The bar at the bottom of the screen</small></span>
       <input type="checkbox" id="optHomeBar"><i></i>
     </label>
+    <div class="row col" id="iconOpensRow">
+      <span>The extension icon opens<small>The inline phone keeps the site's cookies, storage and login; the side panel and full screen run the site in a separate, partitioned frame</small></span>
+      <div class="seg" id="iconOpensSeg"><button data-v="page">Inline phone</button><button data-v="panel">Side panel</button></div>
+    </div>
+    <label class="row toggle" id="pageModeSettings">
+      <span>Inline phone<small>Testing tools (e.g. Claude in Chrome) open the phone inside allowed sites with <code>#mobile-sim</code></small></span>
+      <input type="checkbox" id="optPageMode"><i></i>
+    </label>
+    <div class="row col page-hosts">
+      <span>Allowed sites<small><code>*.example.test</code> includes subdomains</small></span>
+      <div class="host-tags" id="pageHosts" role="list" aria-label="Sites allowed to open the inline phone"></div>
+      <form class="host-add" id="pageHostAdd">
+        <input id="optPageHosts" placeholder="Add a site, e.g. jhme.dev" spellcheck="false" autocomplete="off" aria-label="Add a site">
+        <button type="submit" class="host-add-btn" aria-label="Add the site"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </form>
+    </div>
     <p class="hint">Shortcuts: <kbd>R</kbd> rotate · <kbd>C</kbd> compare · <kbd>D</kbd> devices · <kbd>S</kbd> screenshot · <kbd>V</kbd> record · <kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> zoom · <kbd>Esc</kbd> close. Click the Dynamic Island to expand it.</p>
   </div>
 
@@ -268,6 +289,9 @@
         <section>
           <label class="toggle line"><span>Caption</span><input type="checkbox" id="captionOpt"><i></i></label>
           <input type="text" id="captionText" class="text-input" maxlength="60" placeholder="Caption text" aria-label="Caption text">
+          <div class="cap-styles" id="captionStyles" role="radiogroup" aria-label="Caption style"></div>
+          <div class="cap-opacity"><span>Opacity</span><input type="range" id="captionOpacity" min="10" max="100" step="5" aria-label="Caption opacity"><span class="val" id="captionOpacityVal"></span></div>
+          <label class="toggle line cap-icon"><span>Extension icon <small>watermark, 50%</small></span><input type="checkbox" id="captionIcon"><i></i></label>
         </section>
 
         <section>
@@ -314,7 +338,7 @@
             <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Save MP4
           </button>
           <button id="rvAgain" class="btn">Record again</button>
-          <button id="rvDiscard" class="danger-link">Discard</button>
+          <button id="rvDiscard" class="btn danger-soft">Discard</button>
           <div id="rvConfirm" class="confirm" hidden>
             <span>Discard this video?</span>
             <div>

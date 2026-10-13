@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Mobile Simulator – Responsive Preview",
-  "short_name": "Mobile Simulator",
-  "version": "6.3.0",
+  "name": "jhm-web-responsive",
+  "short_name": "jhm-web-responsive",
+  "version": "6.4.0",
   "description": "Preview any website in realistic phone and tablet frames. Rotate, compare devices, take screenshots and record videos. Free.",
   "icons": {
     "16": "icons/icon16.png",
@@ -11,7 +11,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Open Mobile Simulator",
+    "default_title": "jhm-web-responsive",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
@@ -31,7 +31,9 @@
     "tabCapture",
     "sidePanel",
     "scripting",
-    "webNavigation"
+    "webNavigation",
+    "downloads",
+    "downloads.ui"
   ],
   "host_permissions": [
     "<all_urls>"

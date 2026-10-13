@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="24" cy="16" r="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#tile)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#shine)"/>
+  <g fill="none" stroke="#fff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Browser window, its right side hidden behind the phone -->
+    <path d="M65 44 H33 a9 9 0 0 0 -9 9 V80 a9 9 0 0 0 9 9 H65"/>
+    <path d="M24 53 H65"/>
+    <!-- Phone -->
+    <rect x="65" y="25" width="38" height="78" rx="10"/>
+  </g>
+  <rect x="77" y="32" width="14" height="4.5" rx="2.25" fill="#fff"/>
+</svg>

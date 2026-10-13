@@ -8,7 +8,71 @@
 
   const SIM = `chrome-extension://${chrome.runtime.id}`;
   const isTop = window === window.top;
-  if (!isTop && location.ancestorOrigins?.[0] !== SIM) return;
+  if (!isTop && location.ancestorOrigins?.[0] !== SIM) {
+    pageModeScreen();
+    return;
+  }
+
+  // ---------- page mode (phone drawn inside the website's own page) ----------
+
+  // Inside page mode's phone (a same-origin iframe of the page): phone-like scrollbars.
+  function pageModeScreen() {
+    let host = null;
+    try {
+      host = window.frameElement;
+    } catch {
+      return;
+    }
+    if (host?.id !== 'mobile-sim-screen') return;
+    const style = document.createElement('style');
+    style.textContent = '*{scrollbar-width:none!important}*::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}';
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  // Top frame: the code is loaded only when a page asks for the phone (or had it open).
+  let pageModeFromMenu = null;
+  function pageModeTriggers() {
+    const load = () => import(chrome.runtime.getURL('lib/page-mode.js'));
+    const fromHash = () => {
+      const m = /^#mobile-sim(?:=(.*))?$/.exec(decodeURIComponent(location.hash));
+      return m ? m[1] ?? '' : null;
+    };
+    const run = (spec, source = 'hash') =>
+      load()
+        .then((pm) => {
+          const config = pm.parseSpec(spec);
+          return config ? pm.open(config, { source }) : pm.close();
+        })
+        .catch((err) => console.warn('[mobile-sim] page mode', err));
+    const start = () => {
+      const spec = fromHash();
+      if (spec != null) return run(spec);
+      let saved = null;
+      try {
+        saved = sessionStorage.getItem('__mobileSimPage');
+      } catch {
+        // storage blocked
+      }
+      if (saved) load().then((pm) => pm.restore()).catch(() => {});
+    };
+    // From the extension icon's menu (background): keeps the open phone's device and orientation.
+    pageModeFromMenu = (msg) => {
+      load()
+        .then((pm) => pm.fromMenu(msg))
+        .catch((err) => console.warn('[mobile-sim] page mode', err));
+    };
+    addEventListener('hashchange', () => {
+      if (fromHash() != null) run(fromHash());
+    });
+    addEventListener('message', (e) => {
+      const msg = e.data?.__mobileSimPage;
+      if (e.source !== window || !msg) return;
+      if (msg === 'close') run('off', 'message');
+      else if (msg === 'open') run([e.data.device, e.data.orientation, e.data.layout].filter(Boolean).join(','), 'message');
+    });
+    if (document.readyState === 'loading') addEventListener('DOMContentLoaded', start, { once: true });
+    else start();
+  }
 
   // ---------- scroll sync (both sides use the same section matching) ----------
 
@@ -245,6 +309,7 @@
   // ---------- the website's own tab: scroll sync with the side panel ----------
 
   if (isTop) {
+    pageModeTriggers();
     const emit = (pos) => {
       try {
         chrome.runtime.sendMessage({ type: 'site-scroll', pos }).catch(() => syncEngine?.configure({ on: false }));
@@ -257,6 +322,7 @@
       if (msg?.type === 'ms-sync') getSync(emit).configure(msg.value);
       else if (msg?.type === 'ms-scroll-to') getSync(emit).apply(msg.pos);
       else if (msg?.type === 'ms-position') reply(getSync(emit).position());
+      else if (msg?.type === 'page-mode-menu') pageModeFromMenu?.(msg);
       else return;
       if (msg.type !== 'ms-position') reply(true);
     });

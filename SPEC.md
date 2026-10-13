@@ -1,9 +1,22 @@
-# Mobile Simulator – Spec
+# jhm-web-responsive (formerly Mobile Simulator) – Spec
 
 A free Chrome extension (Manifest V3) to preview any website inside realistic phone and tablet frames, to test responsive design.
 Inspired by "Simulateur téléphone mobile - test site responsive", without the paid features locked.
 
 Status: **v1–v7 built.**
+
+## Page mode for testing tools (2026-10-13, extension v6.4.0)
+
+Shown to users as **Inline phone** (layouts: Side-by-side, Full window); the code keeps the name *page mode* (`lib/page-mode.js`, `#mobile-sim`, `pageMode` storage key).
+
+Why: Claude in Chrome can't use the extension — it refuses `chrome-extension://` tabs, Chrome drops another extension's frame from a tab it debugs, and it can't see the toolbar or the side panel. So the phone is drawn by `frame.js` inside the website's own page.
+
+- Trigger (top frame only): `#mobile-sim[=device,orientation,layout]` or `postMessage({ __mobileSimPage })`; the hash is removed from the address so the site's router never sees it. Allowed hosts only (`pageMode` in `chrome.storage.local`, default local dev hosts, Settings → Page mode); the background re-checks the host before adding any rule.
+- Drawing: `<mobile-sim-host>` with an open shadow root, the shared `lib/device-frame.css` (moved out of `simulator.css`) as a constructable stylesheet, `lib/device-view.js` geometry (also used by `simulator.js`), a same-origin `iframe#mobile-sim-screen` of the page. Layout `dock` (page narrowed beside the phone) or `full`.
+- Identity: session rules `ruleIdsForPage` (5_000_001+), scoped to the tab, the site's host and `sub_frame` documents (XFO/CSP removed, UA + client hints set); `lib/identity.js` is registered in the page world on allowed hosts and only overrides `navigator.userAgent`, `platform`, `maxTouchPoints`, `userAgentData.mobile` inside the page-mode phone. Rules cleared on close, top-level navigation and tab close; the panel rule sweep now ignores page-mode ids.
+- Icon menu (`contexts: ['action']`): Inline phone → Open beside the page / Open full window / Close, sent to the tab's content script (injects `frame.js` first in tabs older than the extension); a site not yet allowed is added (user gesture = consent) after the identity script is re-registered. A `#mobile-sim` trigger on a site that isn't allowed shows a 6 s notice; a page's own `postMessage` never shows extension UI.
+- Safety: a phone reopens after a reload only if it had loaded and stayed open 1.5 s; otherwise the page broke out of its frame and page mode stops with `blocked:frame-busting` (found a reload loop during testing).
+- Not in page mode (v2 candidates): screenshots/recording, compare, on-screen keyboard, scroll sync, drag-to-scroll, touch events synthesized from the mouse.
 
 ## v1.0 cleanup (2026-10-07, quality check)
 - Security: the simulator page only applies its site rules in full screen when it runs in that very tab and the extension opened full screen there (any website could embed the page and pass a tab number before).

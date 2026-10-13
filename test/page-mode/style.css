@@ -1,0 +1,8 @@
+body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #f0fdfa; color: #134e4a; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: #0f766e; color: #fff; }
+header a { color: #ccfbf1; margin-left: 10px; }
+main { padding: 20px; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.cards div { background: #fff; border-radius: 12px; padding: 30px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+pre { background: #134e4a; color: #ccfbf1; padding: 12px; border-radius: 10px; font-size: 12px; white-space: pre-wrap; }
+@media (max-width: 600px) { .cards { grid-template-columns: 1fr; } header { flex-direction: column; gap: 6px; } body { background: #fff7ed; } }
